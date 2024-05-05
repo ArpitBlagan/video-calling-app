@@ -32,7 +32,7 @@ wss.on("connection", (ws: WebSocket, req: Request) => {
           JSON.stringify({
             type: "createOffer",
             sdp: ff.sdp,
-            from: ff.userId,
+            from: ff.from,
           })
         );
       } else if (ff.type == "createAnswer") {

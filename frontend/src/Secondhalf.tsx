@@ -8,13 +8,15 @@ const Secondhalf = ({ socket, name }: { socket: WebSocket; name: string }) => {
   const idd = useRecoilValue(id);
   console.log(socket);
   //Important function to focus on
-  const sendOffer = (userId: any) => {
+  const sendOffer = async (userId: any) => {
+    console.log("sending offer");
     if (pc) {
       pc.onicecandidate = (event) => {
         if (event.candidate) {
           socket?.send(
             JSON.stringify({
               type: "iceCandidate",
+              by: "sender",
               candidate: event.candidate,
               userId,
               from: idd,
@@ -34,20 +36,22 @@ const Secondhalf = ({ socket, name }: { socket: WebSocket; name: string }) => {
           })
         );
       };
+      getCameraStreamAndSend(pc);
     }
-    getCameraStreamAndSend();
   };
-  const getCameraStreamAndSend = () => {
-    navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
-      const video = document.createElement("video");
-      video.srcObject = stream;
-      video.play();
-      // this is wrong, should propogate via a component
-      document.getElementById("you")?.appendChild(video);
-      stream.getTracks().forEach((track) => {
-        pc?.addTrack(track);
+  const getCameraStreamAndSend = (pcc: any) => {
+    navigator.mediaDevices
+      .getUserMedia({ video: true, audio: true })
+      .then((stream) => {
+        const video = document.createElement("video");
+        video.srcObject = stream;
+        video.play();
+        // this is wrong, should propogate via a component
+        document.getElementById("you")?.appendChild(video);
+        stream.getTracks().forEach((track) => {
+          pcc?.addTrack(track);
+        });
       });
-    });
   };
   useEffect(() => {
     const pcc = new RTCPeerConnection();
@@ -76,14 +80,32 @@ const Secondhalf = ({ socket, name }: { socket: WebSocket; name: string }) => {
         console.log("array", data.array);
         setO(data.array);
       } else if (data.type === "createAnswer") {
-        await pc?.setRemoteDescription(data.sdp);
+        console.log("getting ans");
+        await pcc.setRemoteDescription(data.sdp);
       } else if (data.type === "iceCandidate") {
-        pc?.addIceCandidate(data.candidate);
+        console.log("iceCandidateee");
+        if (data.by == "sender") {
+          console.log("candidate from sender.");
+          //@ts-ignore
+          pcc.onicecandidate = (event) => {
+            if (event.candidate) {
+              socket.send(
+                JSON.stringify({
+                  type: "iceCandidate",
+                  by: "not",
+                  candidate: event.candidate,
+                  from: data.from,
+                })
+              );
+            }
+          };
+        }
+        pcc.addIceCandidate(data.candidate);
       } else if (data.type == "createOffer") {
-        console.log("create an answer");
-        pc?.setRemoteDescription(data.sdp).then(() => {
-          pc?.createAnswer().then((answer) => {
-            pc?.setLocalDescription(answer);
+        console.log("create an answer", data);
+        pcc.setRemoteDescription(data.sdp).then(() => {
+          pcc.createAnswer().then((answer) => {
+            pcc.setLocalDescription(answer);
             socket.send(
               JSON.stringify({
                 type: "createAnswer",
@@ -93,6 +115,18 @@ const Secondhalf = ({ socket, name }: { socket: WebSocket; name: string }) => {
             );
           });
         });
+        navigator.mediaDevices
+          .getUserMedia({ video: true, audio: true })
+          .then((stream) => {
+            const video = document.createElement("video");
+            video.srcObject = stream;
+            video.play();
+            // this is wrong, should propogate via a component
+            document.getElementById("you")?.appendChild(video);
+            stream.getTracks().forEach((track) => {
+              pcc?.addTrack(track);
+            });
+          });
       }
     });
   }, []);
@@ -125,8 +159,12 @@ const Secondhalf = ({ socket, name }: { socket: WebSocket; name: string }) => {
       <div className="flex-1 my-1 mx-2 border border-gray-2 rounded-xl flex flex-col justify-center items-center">
         <h2>Video Call</h2>
         <div>
-          <div id="you"></div>
-          <div id="other"></div>
+          <div id="other">
+            <h1>Other</h1>
+          </div>
+          <div id="you">
+            <h1>You</h1>
+          </div>
         </div>
       </div>
     </div>
