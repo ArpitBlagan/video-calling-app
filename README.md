@@ -1,1 +1,1 @@
-Video Calling App using WebRTC 🚀
+Video Calling App using WebRTC and websocket (ws) 🚀
