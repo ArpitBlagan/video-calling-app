@@ -18,32 +18,59 @@ app.use(
 const wss = new WebSocketServer({ server });
 wss.on("connection", (ws: WebSocket, req: Request) => {
   const url_ = url.parse(req.url, true);
-  const { userId } = url_.query;
-  console.log("userId", userId);
-  if (userId) {
-    console.log(userId);
-    Manager.getInstance().addUser(ws, userId);
+  const { userId, name } = url_.query;
+  console.log("userId", userId, name);
+  if (userId && name) {
+    Manager.getInstance().addUser(ws, userId, name as string);
 
     ws.on("message", (message: any) => {
       const ff = JSON.parse(message);
-      if (ff.type == "offer") {
-        Manager.getInstance().giveOffer(message.userId, ff.from);
-      }
-      if (ff.type == "ans") {
-        Manager.getInstance().giveAns(message.userId, ff.from);
-      }
-      if (ff.type == "reject") {
-        Manager.getInstance().rejectOffer(message.userId, ff.from);
+      if (ff.type == "createOffer") {
+        const user = Manager.getInstance().getUserById(ff.userId);
+        console.log("offer to", user);
+        user?.ws.send(
+          JSON.stringify({
+            type: "createOffer",
+            sdp: ff.sdp,
+            from: ff.userId,
+          })
+        );
+      } else if (ff.type == "createAnswer") {
+        const user = Manager.getInstance().getUserById(ff.to);
+        console.log("ans to ", user);
+        user?.ws.send(
+          JSON.stringify({
+            type: "createAnswer",
+            sdp: ff.sdp,
+          })
+        );
+      } else if (ff.type == "iceCandidate") {
+        const user = Manager.getInstance().getUserById(ff.userId);
+        console.log("ice candidate", user);
+        user?.ws.send(JSON.stringify(ff));
       }
     });
-    console.log("sending message to connected user");
-    ws.send(
-      JSON.stringify({
-        message: "I hope it's working",
-      })
-    );
+    const online = Manager.getInstance().getUsers();
+    online.forEach((ele) => {
+      ele.ws.send(
+        JSON.stringify({
+          type: "users",
+          array: online,
+        })
+      );
+    });
+
     ws.on("close", () => {
       Manager.getInstance().delUser(userId as string);
+      const online = Manager.getInstance().getUsers();
+      online.forEach((ele) => {
+        ele.ws.send(
+          JSON.stringify({
+            type: "users",
+            array: online,
+          })
+        );
+      });
       console.log("closing a connection");
     });
   }
