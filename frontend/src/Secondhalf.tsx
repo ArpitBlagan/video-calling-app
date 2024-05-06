@@ -41,7 +41,7 @@ const Secondhalf = ({ socket, name }: { socket: WebSocket; name: string }) => {
       };
     }
   };
-  const getCameraStreamAndSend = (pcc: any) => {
+  const getCameraStreamAndSend = async (pcc: any) => {
     console.log("pc", pcc);
     navigator.mediaDevices
       .getUserMedia({ video: true, audio: true })
@@ -86,7 +86,15 @@ const Secondhalf = ({ socket, name }: { socket: WebSocket; name: string }) => {
       } else if (data.type === "createAnswer") {
         console.log("getting ans");
         await pcc.setRemoteDescription(data.sdp);
+        pcc.ontrack = (event: any) => {
+          console.log("getting tracks", event.track);
+          //@ts-ignore
+          others.current.srcObject = new MediaStream([event.track]);
+          //@ts-ignore
+          others.current.play();
+        };
       } else if (data.type === "iceCandidate") {
+        await pcc.addIceCandidate(data.candidate);
         console.log("iceCandidateee");
         if (data.by == "sender") {
           console.log("candidate from sender.");
@@ -105,13 +113,12 @@ const Secondhalf = ({ socket, name }: { socket: WebSocket; name: string }) => {
         } else {
           console.log("reciver's icecandidate");
         }
-        pcc.addIceCandidate(data.candidate);
-      } else if (data.type == "createOffer") {
         getCameraStreamAndSend(pcc);
+      } else if (data.type == "createOffer") {
         console.log("create an answer", data);
         pcc.setRemoteDescription(data.sdp).then(() => {
-          pcc.createAnswer().then((answer) => {
-            pcc.setLocalDescription(answer);
+          pcc.createAnswer().then(async (answer) => {
+            await pcc.setLocalDescription(answer);
             socket.send(
               JSON.stringify({
                 type: "createAnswer",
@@ -119,6 +126,7 @@ const Secondhalf = ({ socket, name }: { socket: WebSocket; name: string }) => {
                 to: data.from,
               })
             );
+            getCameraStreamAndSend(pcc);
           });
         });
       }
