@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRecoilValue } from "recoil";
 import { id } from "./store/socket";
 import toast from "react-hot-toast";
 const Secondhalf = ({ socket, name }: { socket: WebSocket; name: string }) => {
   const [online, setO] = useState([]);
+  const yours = useRef(null);
+  const others = useRef(null);
   const [pc, setPc] = useState<RTCPeerConnection | null>(null);
   const idd = useRecoilValue(id);
   console.log(socket);
@@ -11,6 +13,7 @@ const Secondhalf = ({ socket, name }: { socket: WebSocket; name: string }) => {
   const sendOffer = async (userId: any) => {
     console.log("sending offer");
     if (pc) {
+      getCameraStreamAndSend(pc);
       pc.onicecandidate = (event) => {
         if (event.candidate) {
           socket?.send(
@@ -36,20 +39,20 @@ const Secondhalf = ({ socket, name }: { socket: WebSocket; name: string }) => {
           })
         );
       };
-      getCameraStreamAndSend(pc);
     }
   };
   const getCameraStreamAndSend = (pcc: any) => {
+    console.log("pc", pcc);
     navigator.mediaDevices
       .getUserMedia({ video: true, audio: true })
       .then((stream) => {
-        const video = document.createElement("video");
-        video.srcObject = stream;
-        video.play();
-        // this is wrong, should propogate via a component
-        document.getElementById("you")?.appendChild(video);
+        //@ts-ignore
+        yours.current.srcObject = stream;
+        //@ts-ignore
+        yours.current.play();
         stream.getTracks().forEach((track) => {
-          pcc?.addTrack(track);
+          console.log("sending track to remote user");
+          pcc.addTrack(track);
         });
       });
   };
@@ -67,11 +70,12 @@ const Secondhalf = ({ socket, name }: { socket: WebSocket; name: string }) => {
         </button>
       </div>
     ));
-    const video = document.createElement("video");
-    document.getElementById("other")?.appendChild(video);
-    pcc.ontrack = (event) => {
-      video.srcObject = new MediaStream([event.track]);
-      video.play();
+    pcc.ontrack = (event: any) => {
+      console.log("getting tracks", event.track);
+      //@ts-ignore
+      others.current.srcObject = new MediaStream([event.track]);
+      //@ts-ignore
+      others.current.play();
     };
     socket.addEventListener("message", async (event: any) => {
       const data = JSON.parse(event.data);
@@ -86,7 +90,6 @@ const Secondhalf = ({ socket, name }: { socket: WebSocket; name: string }) => {
         console.log("iceCandidateee");
         if (data.by == "sender") {
           console.log("candidate from sender.");
-          //@ts-ignore
           pcc.onicecandidate = (event) => {
             if (event.candidate) {
               socket.send(
@@ -94,14 +97,17 @@ const Secondhalf = ({ socket, name }: { socket: WebSocket; name: string }) => {
                   type: "iceCandidate",
                   by: "not",
                   candidate: event.candidate,
-                  from: data.from,
+                  userId: data.from,
                 })
               );
             }
           };
+        } else {
+          console.log("reciver's icecandidate");
         }
         pcc.addIceCandidate(data.candidate);
       } else if (data.type == "createOffer") {
+        getCameraStreamAndSend(pcc);
         console.log("create an answer", data);
         pcc.setRemoteDescription(data.sdp).then(() => {
           pcc.createAnswer().then((answer) => {
@@ -115,18 +121,6 @@ const Secondhalf = ({ socket, name }: { socket: WebSocket; name: string }) => {
             );
           });
         });
-        navigator.mediaDevices
-          .getUserMedia({ video: true, audio: true })
-          .then((stream) => {
-            const video = document.createElement("video");
-            video.srcObject = stream;
-            video.play();
-            // this is wrong, should propogate via a component
-            document.getElementById("you")?.appendChild(video);
-            stream.getTracks().forEach((track) => {
-              pcc?.addTrack(track);
-            });
-          });
       }
     });
   }, []);
@@ -158,12 +152,14 @@ const Secondhalf = ({ socket, name }: { socket: WebSocket; name: string }) => {
       </div>
       <div className="flex-1 my-1 mx-2 border border-gray-2 rounded-xl flex flex-col justify-center items-center">
         <h2>Video Call</h2>
-        <div>
-          <div id="other">
+        <div className="grid md:grid-cols-2">
+          <div>
             <h1>Other</h1>
+            <video ref={others} />
           </div>
-          <div id="you">
+          <div>
             <h1>You</h1>
+            <video ref={yours} />
           </div>
         </div>
       </div>
